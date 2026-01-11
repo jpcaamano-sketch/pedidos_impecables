@@ -1,4 +1,3 @@
-import streamlit as st
 import google.generativeai as genai
 from docx import Document
 import io
@@ -6,12 +5,19 @@ import io
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Generador de Pedidos Impecables", page_icon="🗣️", layout="centered")
 
+# CSS para ocultar encabezados, pie de página y menú, y estilizar la app
 st.markdown("""
     <style>
+    /* Estilos para inputs más grandes */
     .stTextArea textarea { font-size: 16px !important; }
     .stTextInput input { font-size: 16px !important; }
     .css-1v0mbdj { width: 100%; }
     .info-box { background-color: #f0f8ff; padding: 15px; border-radius: 10px; border-left: 5px solid #1f77b4; }
+    
+    /* --- OCULTAR ELEMENTOS DE LA INTERFAZ DE STREAMLIT --- */
+    #MainMenu {visibility: hidden;} /* Oculta el menú de hamburguesa (derecha arriba) */
+    header {visibility: hidden;}    /* Oculta la barra de cabecera superior */
+    footer {visibility: hidden;}    /* Oculta el pie de página "Made with Streamlit" */
     </style>
     """, unsafe_allow_html=True)
 
