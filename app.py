@@ -1,78 +1,79 @@
+import streamlit as st
+import os
+import io
 import google.generativeai as genai
 from docx import Document
-import io
+from dotenv import load_dotenv
 
-# --- 1. CONFIGURACIÓN ---
+# --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Generador de Pedidos Impecables", page_icon="🗣️", layout="centered")
 
-# CSS para ocultar encabezados, pie de página y menú, y estilizar la app
+# --- 2. ESTILOS CSS ---
 st.markdown("""
     <style>
-    /* Estilos para inputs más grandes */
     .stTextArea textarea { font-size: 16px !important; }
     .stTextInput input { font-size: 16px !important; }
-    .css-1v0mbdj { width: 100%; }
     .info-box { background-color: #f0f8ff; padding: 15px; border-radius: 10px; border-left: 5px solid #1f77b4; }
-    
-    /* --- OCULTAR ELEMENTOS DE LA INTERFAZ DE STREAMLIT --- */
-    #MainMenu {visibility: hidden;} /* Oculta el menú de hamburguesa (derecha arriba) */
-    header {visibility: hidden;}    /* Oculta la barra de cabecera superior */
-    footer {visibility: hidden;}    /* Oculta el pie de página "Made with Streamlit" */
+    #MainMenu {visibility: hidden;}
+    header {visibility: hidden;}
+    footer {visibility: hidden;}
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. CONEXIÓN IA ---
+# --- 3. CONEXIÓN IA (SEGURA) ---
 try:
+    # Intenta leer de los secretos (local o nube)
     api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=api_key)
 except Exception:
-    st.error("⚠️ Falta la API KEY en .streamlit/secrets.toml")
+    st.error("⚠️ No se encontró la clave en .streamlit/secrets.toml")
     st.stop()
 
-# --- 3. LÓGICA DE PEDIDOS (ONTOLOGÍA DEL LENGUAJE) ---
-def generar_pedido(oyente, accion, condiciones, tiempo, contexto):
+# --- 4. FUNCIONES LÓGICAS ---
+
+def generar_pedido_ia(oyente, accion, condiciones, tiempo, contexto):
+    """Genera el texto usando Google Gemini"""
     try:
-        model = genai.GenerativeModel("gemma-3-27b-it")
+        # Usamos gemini-1.5-flash para asegurar compatibilidad
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         prompt = f"""
-        Actúa como un Coach Ontológico experto en Fernando Flores y Rafael Echeverría.
-        Tu tarea es redactar un "PEDIDO IMPECABLE" (Speech Act) basado en estos datos.
-
-        DATOS DEL PEDIDO:
-        1. Oyente: {oyente}
-        2. Acción futura: {accion}
-        3. Condiciones de Satisfacción (Estándar de calidad): {condiciones}
-        4. Factor Tiempo: {tiempo}
-        5. Trasfondo (Por qué es importante): {contexto}
-
-        ESTRUCTURA DE RESPUESTA:
-        Genera dos secciones:
-
-        SECCION_GUION:
-        Escribe el guion conversacional exacto, en primera persona, listo para ser hablado o enviado.
-        El tono debe ser asertivo pero colaborativo. 
-        IMPORTANTE: Debe terminar explícitamente buscando la aceptación del otro (Ej: "¿Puedes comprometerte a esto?", "¿Cuento contigo?").
+        Actúa como un Coach Ontológico experto en Fernando Flores.
+        Redacta un "PEDIDO IMPECABLE" basado en:
         
-        SECCION_ANALISIS:
-        Explica brevemente por qué este pedido reduce la incertidumbre, destacando cómo las condiciones de satisfacción evitan malentendidos.
+        1. OYENTE: {oyente}
+        2. ACCIÓN: {accion}
+        3. CONDICIONES DE SATISFACCIÓN: {condiciones}
+        4. TIEMPO: {tiempo}
+        5. TRASFONDO: {contexto}
+
+        Genera dos partes separadas claramente por la etiqueta "SECCION_ANALISIS":
+        
+        Parte 1: El GUION (listo para copiar/pegar, tono profesional y asertivo).
+        Parte 2: SECCION_ANALISIS: Una explicación breve de por qué este pedido reduce incertidumbre.
         """
         
         response = model.generate_content(prompt)
-        parts = response.text.split("SECCION_ANALISIS:")
+        text = response.text
         
-        guion = parts[0].replace("SECCION_GUION:", "").strip()
-        analisis = parts[1].strip() if len(parts) > 1 else "Análisis no generado."
-        
+        if "SECCION_ANALISIS" in text:
+            parts = text.split("SECCION_ANALISIS")
+            guion = parts[0].replace("SECCION_ANALISIS", "").replace("Parte 1:", "").strip()
+            analisis = parts[1].replace("Parte 2:", "").strip()
+        else:
+            guion = text
+            analisis = "No se generó el análisis detallado."
+            
         return guion, analisis
-
     except Exception as e:
-        return f"Error: {e}", ""
+        return f"Error al generar: {e}", ""
 
 def crear_docx(guion, analisis):
+    """Crea el archivo Word descargable"""
     doc = Document()
-    doc.add_heading('Guion de Pedido Impecable', 0)
+    doc.add_heading('PEDIDO IMPECABLE', 0)
     
-    doc.add_heading('Conversación Sugerida:', level=1)
+    doc.add_heading('Guion Sugerido:', level=1)
     doc.add_paragraph(guion)
     
     doc.add_heading('Análisis Ontológico:', level=1)
@@ -80,63 +81,83 @@ def crear_docx(guion, analisis):
     
     bio = io.BytesIO()
     doc.save(bio)
-    return bio.getvalue()
+    bio.seek(0)
+    return bio
 
-# --- 4. INTERFAZ ---
-st.title("🗣️ Pedidos Impecables")
-st.markdown("**Basado en la Ontología del Lenguaje (Fernando Flores)**")
-st.caption("Un pedido no es un deseo. Es una acción lingüística que coordina acciones futuras.")
+# --- 5. INTERFAZ DE USUARIO ---
 
-st.divider()
+st.title("🗣️ Generador de Pedidos Impecables")
+st.caption("Basado en la Ontología del Lenguaje")
+st.write("Completa los 5 componentes de un pedido efectivo para evitar malentendidos.")
 
 with st.container(border=True):
-    st.subheader("🛠️ Diseña tu Pedido")
-    
     col1, col2 = st.columns(2)
     with col1:
-        oyente = st.text_input("1. ¿A quién le pides? (Oyente)", placeholder="Ej: Juan, Jefe de Proyecto")
+        oyente = st.text_input("1. ¿A quién le pides?", placeholder="Ej: Juan, Jefe de Marketing")
     with col2:
-        tiempo = st.text_input("2. Factor Tiempo (¿Para cuándo?)", placeholder="Ej: Martes 15 a las 14:00 hrs")
+        tiempo = st.text_input("2. Factor Tiempo", placeholder="Ej: Viernes 20 antes de las 14:00")
 
-    accion = st.text_area("3. Acción (¿Qué quieres que haga?)", placeholder="Ej: Que prepares el reporte de ventas...")
-    
-    st.info("💡 **Clave del Éxito:** Las condiciones de satisfacción eliminan la frase 'es que yo pensé que...'")
-    condiciones = st.text_area("4. Condiciones de Satisfacción (¿Cómo sabes que está bien hecho?)", 
-                               placeholder="Ej: Debe estar en formato Excel, incluir el IVA desglosado y tener máximo 2 páginas.", height=100)
-    
-    contexto = st.text_area("5. Trasfondo (¿Cuál es el quiebre/necesidad?)", 
-                            placeholder="Ej: Tenemos reunión de directorio el miércoles y necesito datos duros para defender el presupuesto.")
+    accion = st.text_area("3. Acción (¿Qué necesitas?)", placeholder="Ej: Que envíes el reporte de ventas", height=100)
+    condiciones = st.text_area("4. Condiciones de Satisfacción (Estándar)", placeholder="Ej: Formato PDF, incluyendo gráficos de Q1", height=100)
+    contexto = st.text_area("5. Trasfondo (¿Para qué?)", placeholder="Ej: Para la reunión de directorio del lunes", height=100)
 
-    if st.button("✨ Generar Pedido Impecable", type="primary"):
-        if not oyente or not accion or not condiciones or not tiempo:
-            st.warning("⚠️ Para que el pedido sea impecable, necesitas llenar todos los campos (especialmente las condiciones y el tiempo).")
+    # Botón de acción
+    if st.button("🚀 GENERAR PEDIDO", type="primary", use_container_width=True):
+        if not oyente or not accion or not tiempo:
+            st.warning("⚠️ Faltan datos clave: Oyente, Acción y Tiempo son obligatorios.")
         else:
-            with st.spinner("Construyendo acto del habla..."):
-                guion_gen, analisis_gen = generar_pedido(oyente, accion, condiciones, tiempo, contexto)
-                st.session_state.pedido = {"guion": guion_gen, "analisis": analisis_gen}
+            with st.spinner("Construyendo acto del habla con IA..."):
+                guion_gen, analisis_gen = generar_pedido_ia(oyente, accion, condiciones, tiempo, contexto)
+                
+                # Verificación de error en la respuesta
+                if "Error al generar" in guion_gen:
+                    st.error(guion_gen)
+                else:
+                    st.session_state.pedido = {"guion": guion_gen, "analisis": analisis_gen, "oyente": oyente}
+                    st.rerun()
 
-# --- 5. RESULTADOS ---
+# --- 6. RESULTADOS ---
 if 'pedido' in st.session_state:
     res = st.session_state.pedido
     
     st.divider()
-    st.subheader("💬 Tu Guion")
+    st.subheader("📄 TU PEDIDO LISTO:")
     
+    # Visualización
     st.markdown(f"""
     <div class="info-box">
+        <b>Guion Sugerido:</b><br><br>
         {res['guion'].replace(chr(10), '<br>')}
     </div>
     """, unsafe_allow_html=True)
     
-    with st.expander("🧠 Ver Análisis Ontológico (Por qué funciona)"):
+    with st.expander("🧠 Ver Análisis (Por qué funciona)"):
         st.write(res['analisis'])
     
-    # Descarga
-    docx_file = crear_docx(res['guion'], res['analisis'])
-    st.download_button(
-        label="💾 Descargar Guion (.docx)",
-        data=docx_file,
-        file_name="Pedido_Impecable.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        use_container_width=True
-    )
+    col_d1, col_d2 = st.columns(2)
+    
+    # Descargar TXT (Simple)
+    with col_d1:
+        st.download_button(
+            label="💾 Descargar Texto (.txt)",
+            data=res['guion'],
+            file_name=f"pedido_{res['oyente']}.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+    
+    # Descargar DOCX (Completo)
+    with col_d2:
+        docx_file = crear_docx(res['guion'], res['analisis'])
+        st.download_button(
+            label="📝 Descargar Word (.docx)",
+            data=docx_file,
+            file_name=f"pedido_{res['oyente']}.docx",
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True
+        )
+    
+    # Botón reiniciar
+    if st.button("🔄 Hacer Nuevo Pedido", use_container_width=True):
+        del st.session_state.pedido
+        st.rerun()
